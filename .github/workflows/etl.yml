@@ -2,7 +2,7 @@ name: etl
 
 on:
   schedule:
-    - cron: '0 * * * *' # runs on the hour evry hour
+    - cron: '*/10 * * * *' # runs every 10 minutes
 
 jobs:
   build:
