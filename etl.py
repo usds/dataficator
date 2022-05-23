@@ -1,9 +1,10 @@
 import boto3
 import pandas as pd
+import os
 
-CLOUDFLARE_ACCOUNT_ID = ''
-AWS_ACCESS_KEY_ID = ''
-AWS_SECRET_ACCESS_KEY = ''
+CLOUDFLARE_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
+AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
 
 s3_bucket_name = 'incoming'
 s3 = boto3.resource('s3',
