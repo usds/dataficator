@@ -13,7 +13,7 @@ s3 = boto3.resource('s3',
                     aws_secret_access_key = AWS_SECRET_ACCESS_KEY)
 
 cvses_remote_object = s3.Object(s3_bucket_name,'cvses.csv')
-cvses_response = object.get()
+cvses_response = cvses_remote_object.get()
 cvses_df = pd.read_csv(cvses_response['Body'], dtype='string')
 
 print(cvses_df.head())
