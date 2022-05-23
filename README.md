@@ -13,3 +13,5 @@ Two triggers are defined:
 - A mechanism allowing manual invocation
 
 To manually invoke etl.py inside a Github Action, click the "Actions" tab in Github; click "etl" on the left, and then "Run workflow"
+
+![howto](img/actions.png)
