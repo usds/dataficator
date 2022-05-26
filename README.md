@@ -15,3 +15,11 @@ Two triggers are defined:
 To manually invoke etl.py inside a Github Action, click the "Actions" tab in Github; click "etl" on the left, and then "Run workflow"
 
 ![howto](img/actions.png)
+
+## How to set up Cloudflare R2 buckets
+
+1. Get a Cloudflare account.
+2. Log into the [Cloudflare dashboard](https://dash.cloudflare.com)
+3. Click on "Workers" in the left-hand side nav menu and enable a Workers subdomain.
+4. Click on R2 in the left-hand side nav menu and create two R2 buckets. The etl.py code assumes that they'll be called `incoming` (for inbound data) and `inventory` (for processed results).
+5. Make the `inventory` bucket publicly readable by setting up a Cloudflare Worker to intercept incoming requests.
