@@ -6,6 +6,7 @@ import re
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from multiprocessing import Pool
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -25,11 +26,10 @@ RETAILERS = os.environ.get("RETAILERS").split(':')
 DISTANCE_THRESHOLD = 50
 MAX_STORES = 50
 
-INVENTORY_DIR = 'inventory'  # Only used for testing local file writes
+INVENTORY_DIR = Path('inventory')  # Only used for testing local file writes
 
 s3_incoming_bucket_name = 'incoming'
-s3_retailer_object_name = 'cvses.csv'
-s3_output_bucket_name = 'private-inventory' # change this to 'inventory' when ready to be public
+s3_output_bucket_name = 'inventory'
 
 
 s3 = boto3.resource('s3',
@@ -103,7 +103,7 @@ def get_store_inventories(worldwide_inventory_df, store_id, distance):
         store.add_stock(record)
     return stores
 
-def write_local_file(filename, string):
+def write_local_file(filename, content):
     with open(INVENTORY_DIR / filename, "w") as filehandle:
         filehandle.write(content)
 
@@ -111,25 +111,38 @@ def write_remote_file(filename, content):
     output_object = s3.Object(s3_output_bucket_name, filename)
     result = output_object.put(Body=content)
 
-for retailer in RETAILERS:
-    s3_retailer_inventory_file = retailer + "_master.parquet"
-    s3_retailer_local_stores_file = retailer + "_local_stores.parquet"
+def write_zip_code_data(zip_code, local_stores_df, inventory_df):
+    store_inventories = []
+    for ordinal in range(MAX_STORES):
+        store_id = local_stores_df.loc[zip_code, pd.IndexSlice[str(ordinal),'store_id']]
+        distance = local_stores_df.loc[zip_code, pd.IndexSlice[str(ordinal),'distance']]
+        if distance > DISTANCE_THRESHOLD:
+            break
+        store_inventories += get_store_inventories(inventory_df, store_id, distance)
 
-    retailer_inventory_table = pq.read_table(f"{s3_incoming_bucket_name}/{s3_retailer_inventory_file}", filesystem=s3fs)
-    retailer_inventory_df = retailer_inventory_table.to_pandas()
+    output_filename = f"{zip_code}_{DISTANCE_THRESHOLD}.json"
+    content = json.dumps([asdict(store) for store in store_inventories], indent=2)
+    write_remote_file(output_filename, content)
 
-    retailer_local_stores_table = pq.read_table(f"{s3_incoming_bucket_name}/{s3_retailer_local_stores_file}", filesystem=s3fs)
-    retailer_local_stores_df = retailer_local_stores_table.to_pandas()
 
-    for zip_code in retailer_local_stores_df.index:
-        store_inventories = []
-        for ordinal in range(MAX_STORES):
-            store_id = retailer_local_stores_df.loc[zip_code, pd.IndexSlice[str(ordinal),'store_id']]
-            distance = retailer_local_stores_df.loc[zip_code, pd.IndexSlice[str(ordinal),'distance']]
-            if distance > DISTANCE_THRESHOLD:
-                break
-            store_inventories += get_store_inventories(retailer_inventory_df, store_id, distance)
+def processJobs():
+    for retailer in RETAILERS:
+        s3_retailer_inventory_file = retailer + "_master.parquet"
+        s3_retailer_local_stores_file = retailer + "_local_stores.parquet"
 
-        output_filename = f"{zip_code}_{DISTANCE_THRESHOLD}.json"
-        content = json.dumps([asdict(store) for store in store_inventories], indent=2)
-        write_remote_file(output_filename, content)
+        retailer_inventory_table = pq.read_table(f"{s3_incoming_bucket_name}/{s3_retailer_inventory_file}", filesystem=s3fs)
+        retailer_inventory_df = retailer_inventory_table.to_pandas()
+
+        retailer_local_stores_table = pq.read_table(f"{s3_incoming_bucket_name}/{s3_retailer_local_stores_file}", filesystem=s3fs)
+        retailer_local_stores_df = retailer_local_stores_table.to_pandas()
+
+        for zip_code in retailer_local_stores_df.index:
+            write_zip_code_data(zip_code, retailer_local_stores_df, retailer_inventory_df)
+
+        with Pool(16) as p:
+            zip_codes = retailer_local_stores_df.index
+            args_list = zip(zip_codes, [retailer_local_stores_df]*len(zip_codes), [retailer_inventory_df]*len(zip_codes))
+            results = [p.apply_async(write_zip_code_data, args) for args in args_list]
+
+if __name__ == '__main__':
+    processJobs()
